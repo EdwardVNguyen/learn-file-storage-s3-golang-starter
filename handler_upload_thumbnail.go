@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"net/http"
 	"io"
-	"encoding/base64"
+	"os"
+	"strings"
+	"path/filepath"
 
 	"github.com/bootdotdev/learn-file-storage-s3-golang-starter/internal/auth"
 	"github.com/google/uuid"
@@ -45,12 +47,6 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 	}
 	defer file.Close()
 
-	imageData, err := io.ReadAll(file)
-	if err != nil {
-		respondWithError(w, http.StatusInternalServerError, "Unable to read file data", err)
-		return
-	}
-
 	video, err := cfg.db.GetVideo(videoID)
 	if err != nil {
 		respondWithError(w, http.StatusUnauthorized, "Unauthorized to get video as current user is not owner", err)
@@ -58,9 +54,23 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 	}
 
 	mediaType := header.Header.Get("Content-Type")
-	data := base64.StdEncoding.EncodeToString(imageData)
-	dataURL := fmt.Sprintf(`data:%s;base64,%s`, mediaType, data) 
-	video.ThumbnailURL = &dataURL
+	fileExtension := strings.Split(mediaType, "/")[1]
+	name := fmt.Sprintf(`%s.%s`, videoIDString, fileExtension)
+	path := filepath.Join(cfg.assetsRoot, name)
+
+	endpoint := fmt.Sprintf(`http://localhost:%s/assets/%s.%s`, cfg.port, videoIDString, fileExtension)
+	video.ThumbnailURL = &endpoint
+
+	assetFile, err := os.Create(path)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Could not create asset file", err)
+		return
+	}
+
+	if _, err := io.Copy(assetFile, file); err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Could not copy file to asset file", err)
+		return
+	}
 
 	if err := cfg.db.UpdateVideo(video); err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Could not update video", err)
