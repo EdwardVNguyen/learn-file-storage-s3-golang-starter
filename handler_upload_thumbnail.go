@@ -8,6 +8,8 @@ import (
 	"strings"
 	"path/filepath"
 	"mime"
+	"crypto/rand"
+	"encoding/base64"
 
 	"github.com/bootdotdev/learn-file-storage-s3-golang-starter/internal/auth"
 	"github.com/google/uuid"
@@ -65,12 +67,15 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
+	key := make([]byte, 32)
+	rand.Read(key)
+	encodedStr := base64.RawURLEncoding.EncodeToString(key)
 
 	fileExtension := strings.Split(contentType, "/")[1]
-	name := fmt.Sprintf(`%s.%s`, videoIDString, fileExtension)
+	name := fmt.Sprintf(`%s.%s`, encodedStr, fileExtension)
 	path := filepath.Join(cfg.assetsRoot, name)
 
-	endpoint := fmt.Sprintf(`http://localhost:%s/assets/%s.%s`, cfg.port, videoIDString, fileExtension)
+	endpoint := fmt.Sprintf(`http://localhost:%s/assets/%s.%s`, cfg.port, encodedStr, fileExtension)
 	video.ThumbnailURL = &endpoint
 
 	assetFile, err := os.Create(path)
