@@ -99,8 +99,25 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 	rand.Read(key)
 	encodedStr := base64.RawURLEncoding.EncodeToString(key)
 
+	// determine if it is landscape, portrait, or other
+	var prefix string
+	aspectRatio, err := getVideoAspectRatio(tempFile.Name()) 
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "could not get aspect ratio", err)
+		return
+	}
+
+	switch aspectRatio {
+	case "16:9":
+		prefix = "landscape"
+	case "9:16":
+		prefix = "portrait"
+	default:
+		prefix = "other"
+	}
+
 	fileExtension := strings.Split(contentType, "/")[1]
-	s3Key := fmt.Sprintf(`%s.%s`, encodedStr, fileExtension)
+	s3Key := fmt.Sprintf(`%s/%s.%s`, prefix, encodedStr, fileExtension)
 	
 	// put the file onto aws s3 bucket
 	// https://docs.aws.amazon.com/code-library/latest/ug/go_2_s3_code_examples.html
