@@ -10,6 +10,7 @@ import (
 	"encoding/base64"
 	"strings"
 	"fmt"
+	"path/filepath"
 
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/google/uuid"
@@ -118,13 +119,31 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 
 	fileExtension := strings.Split(contentType, "/")[1]
 	s3Key := fmt.Sprintf(`%s/%s.%s`, prefix, encodedStr, fileExtension)
+
+	// processed version of video from the temporary file
+	tempFilePath, err:= filepath.Abs(tempFile.Name())
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Error getting file path from temporary file", err)
+		return
+	}
+	processedVideoFilePath, err := processVideoForFastStart(tempFilePath)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Error processing video for fast start", err)
+		return
+	}
+	processedVideoFile, err := os.Open(processedVideoFilePath)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Error opening file from processed video file path", err)
+		return
+	}
+	defer processedVideoFile.Close();
 	
 	// put the file onto aws s3 bucket
 	// https://docs.aws.amazon.com/code-library/latest/ug/go_2_s3_code_examples.html
 	if _, err := cfg.s3Client.PutObject( context.TODO(), &s3.PutObjectInput {
 			Bucket: &cfg.s3Bucket,
 			Key: &s3Key,
-			Body: tempFile,
+			Body: processedVideoFile,
 			ContentType: &mediaType,
 		}); err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Error uploading file to bucket", err)		
