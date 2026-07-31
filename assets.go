@@ -6,6 +6,13 @@ import (
 	"bytes"
 	"io"
 	"encoding/json"
+	"time"
+	"context"
+	"strings"
+	"fmt"
+
+	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/bootdotdev/learn-file-storage-s3-golang-starter/internal/database"
 )
 
 func (cfg apiConfig) ensureAssetsDir() error {
@@ -70,4 +77,37 @@ func processVideoForFastStart(filePath string) (string, error) {
 		return "", err;
 	}
 	return outputFilePath, nil;
+}
+
+func generatePresignedURL(s3Client *s3.Client, bucket, key string, expireTime time.Duration) (string, error) {
+	presignedClient := s3.NewPresignClient(s3Client)
+	presignedHTTPRequest, err := presignedClient.PresignGetObject( context.TODO(), &s3.GetObjectInput {
+			Bucket: &bucket,
+			Key: &key,
+		}, s3.WithPresignExpires(expireTime),
+	)
+	if err != nil {
+		return "", err
+	}
+
+	return presignedHTTPRequest.URL, nil
+}
+
+func (cfg *apiConfig) dbVideoToSignedVideo(video database.Video) (database.Video, error) {
+	if video.VideoURL == nil {
+		return video, nil
+	}
+	arr := strings.Split(*video.VideoURL, ",")	
+	if len(arr) != 2 {
+		return database.Video{}, fmt.Errorf("must need bucket and key, but arr length is not 2")
+	}
+	bucket := arr[0]
+	key := arr[1]
+	presignedURL, err := generatePresignedURL(cfg.s3Client, bucket, key, 15 * time.Minute)
+	if err != nil {
+		return database.Video{}, err
+	}
+	video.VideoURL = &presignedURL
+
+	return video, nil
 }
